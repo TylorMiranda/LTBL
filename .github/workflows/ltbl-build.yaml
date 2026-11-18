@@ -17,3 +17,38 @@ jobs:
             run-cpp: true
             run-shader-validation: false
             cmake-preset: "ALL"
+
+    release:
+        name: Publish MO2-ready download
+        needs: build
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+        steps:
+            - name: Download build output
+              uses: actions/download-artifact@v4
+              with:
+                  name: dist-artifacts
+                  path: dist
+
+            - name: Pick the all-in-one package
+              id: pick
+              run: |
+                  f=$(ls dist/*_AIO-*.7z | head -n1)
+                  mkdir -p out
+                  cp "$f" "out/LetThereBeLight-AIO.7z"
+                  echo "built=$(basename "$f")" >> "$GITHUB_OUTPUT"
+
+            - name: Publish to the "latest" release
+              uses: softprops/action-gh-release@v2
+              with:
+                  tag_name: latest
+                  name: "Let There Be Light (latest build)"
+                  prerelease: true
+                  make_latest: true
+                  body: |
+                      Latest automatic build of Let There Be Light.
+                      Install in MO2: Downloads > Install a new mod from an archive > LetThereBeLight-AIO.7z
+                      Source package: ${{ steps.pick.outputs.built }}
+                      Commit: ${{ github.sha }}
+                  files: out/LetThereBeLight-AIO.7z

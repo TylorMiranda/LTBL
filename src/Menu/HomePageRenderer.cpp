@@ -66,7 +66,7 @@ void HomePageRenderer::RenderWelcomeSection()
 	auto versionStr = Util::GetFormattedVersion(Plugin::VERSION);
 	auto expectedTag = std::format("v{}", versionStr);
 	auto* i18n = I18n::GetSingleton();
-	std::string titleWithVersion = Plugin::BUILD_DESCRIBE == expectedTag ? i18n->Format("menu.home.welcome", { { "version", versionStr } }, "Welcome to Community Shaders {version}") : i18n->Format("menu.home.welcome_dev", { { "version", versionStr }, { "build", std::string(Plugin::BUILD_DESCRIBE) } }, "Welcome to Community Shaders {version} [{build}]");
+	std::string titleWithVersion = Plugin::BUILD_DESCRIBE == expectedTag ? i18n->Format("menu.home.welcome", { { "version", versionStr } }, "Welcome to Let There Be Light {version}") : i18n->Format("menu.home.welcome_dev", { { "version", versionStr }, { "build", std::string(Plugin::BUILD_DESCRIBE) } }, "Welcome to Let There Be Light {version} [{build}]");
 	ImVec2 titleSize = ImGui::CalcTextSize(titleWithVersion.c_str());
 	ImGui::SetCursorPosX((windowSize.x - titleSize.x) * 0.5f);
 	ImGui::Text("%s", titleWithVersion.c_str());

@@ -1,0 +1,19 @@
+name: "LTBL Build"
+
+on:
+    push:
+        branches: [main]
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+jobs:
+    build:
+        uses: ./.github/workflows/_shared-build.yaml
+        with:
+            ref: ${{ github.sha }}
+            repository: ${{ github.repository }}
+            run-cpp: true
+            run-shader-validation: false
+            cmake-preset: "ALL"

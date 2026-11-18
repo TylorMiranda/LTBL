@@ -14,6 +14,9 @@
 #include "Features/HorizonFix.h"
 #include "Features/IBL.h"
 #include "Features/InteriorSun.h"
+#include "Features/LTBL/Candlelight.h"
+#include "Features/LTBL/EyeAdaptation.h"
+#include "Features/LTBL/TorchBearers.h"
 #include "Features/InverseSquareLighting.h"
 #include "Features/LODBlending.h"
 #include "Features/LightLimitFix.h"
@@ -71,6 +74,9 @@ namespace globals
 		HairSpecular hairSpecular{};
 		HorizonFix horizonFix{};
 		InteriorSun interiorSun{};
+		LTBLEyeAdaptation ltblEyeAdaptation{};
+		LTBLTorchBearers ltblTorchBearers{};
+		LTBLCandlelight ltblCandlelight{};
 		InverseSquareLighting inverseSquareLighting{};
 		ScreenSpaceGI screenSpaceGI{};
 		ScreenSpaceShadows screenSpaceShadows{};

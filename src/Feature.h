@@ -146,7 +146,8 @@ public:
 	 * without the user asking for them. A pre-release addon is installed deliberately,
 	 * so it starts enabled. Users can flip either via the "Disable at Boot" menu.
 	 */
-	virtual bool IsDisabledByDefault() const { return IsCore() && GetReleaseStage() != ReleaseStage::Release; }
+	// LTBL Mode: every feature, including experimental ones, starts enabled.
+	virtual bool IsDisabledByDefault() const { return false; }
 
 	/**
 	 * Whether the feature will show up in the GUI menu

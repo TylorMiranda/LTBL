@@ -39,6 +39,11 @@ jobs:
                   cp "$f" "out/LetThereBeLight-AIO.7z"
                   echo "built=$(basename "$f")" >> "$GITHUB_OUTPUT"
 
+            - name: Remove the previous "latest" release
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: gh release delete latest --cleanup-tag -y -R "${{ github.repository }}" || true
+
             - name: Publish to the "latest" release
               uses: softprops/action-gh-release@v2
               with:

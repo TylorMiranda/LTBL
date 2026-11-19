@@ -22,7 +22,9 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	MaxDarkBoostStops,
 	MaxBrightCutStops,
 	NightDesaturation,
-	DisableVanillaAdaptation)
+	DisableVanillaAdaptation,
+	CharacterExposure,
+	SpeedScale)
 
 namespace
 {
@@ -48,7 +50,14 @@ void LTBLEyeAdaptation::DrawSettings()
 		ImGui::TreePop();
 	}
 
-	if (ImGui::TreeNodeEx(T(TKEY("range"), "How far your eyes can adjust"), ImGuiTreeNodeFlags_DefaultOpen)) {
+	ImGui::SliderFloat(T(TKEY("speed_scale"), "Timing calibration"), &settings.SpeedScale, 0.1f, 5.0f, "%.2f");
+	if (auto _tt = Util::HoverTooltipWrapper())
+		ImGui::Text("%s", T(TKEY("speed_scale_tt"), "If adjusting feels faster or slower than the seconds above, change this. Higher is faster."));
+	ImGui::Checkbox(T(TKEY("character_exposure"), "Experimental: measure at character"), &settings.CharacterExposure);
+	if (auto _tt = Util::HoverTooltipWrapper())
+		ImGui::Text("%s", T(TKEY("character_exposure_tt"), "Uses the light at your character instead of the screen. Experimental: can flicker and ignores moonlight."));
+
+	if (settings.CharacterExposure && ImGui::TreeNodeEx(T(TKEY("range"), "How far your eyes can adjust"), ImGuiTreeNodeFlags_DefaultOpen)) {
 		ImGui::SliderFloat(T(TKEY("strength"), "Adjustment strength"), &settings.Strength, 0.0f, 1.0f, "%.2f");
 		ImGui::SliderFloat(T(TKEY("dark_boost"), "Night vision limit (stops)"), &settings.MaxDarkBoostStops, 0.0f, 6.0f, "%.1f");
 		if (auto _tt = Util::HoverTooltipWrapper())
@@ -64,6 +73,7 @@ void LTBLEyeAdaptation::DrawSettings()
 		ImGui::Text("Light at character: %.1f", lastLightLevel);
 		ImGui::Text("Target: %.2f  Adapted: %.2f (log2)", lastTargetLog, adaptedLog);
 		ImGui::Text("Eye compensation: %+.2f stops", lastCompStops);
+		ImGui::Text("Current adjust time: %.1f s", lastDuration);
 		ImGui::TreePop();
 	}
 }
@@ -101,6 +111,8 @@ void LTBLEyeAdaptation::RestoreImagespace()
 			bd.cinematic.saturation = sourceSaturation;
 		if (bd.hdr.eyeAdaptStrength == writtenAdaptStrength)
 			bd.hdr.eyeAdaptStrength = sourceAdaptStrength;
+		if (bd.hdr.eyeAdaptSpeed == writtenAdaptSpeed)
+			bd.hdr.eyeAdaptSpeed = sourceAdaptSpeed;
 	}
 	wroteLastFrame = false;
 }
@@ -147,13 +159,35 @@ void LTBLEyeAdaptation::EarlyPrepass()
 	const float tau = std::max(duration / kTimeConstantsToComplete, 0.001f);
 	adaptedLog += (targetLog - adaptedLog) * (1.0f - std::exp(-dt / tau));
 
-	// Compensation: eyes open up when adapted to darkness, close down when adapted to brightness.
+	if (settings.CharacterExposure != lastCharacterExposure) {
+		// Switching modes: put back everything the other mode changed.
+		RestoreImagespace();
+		lastCharacterExposure = settings.CharacterExposure;
+	}
+
+	auto& bd = ism->GetRuntimeData().data.baseData;
+
+	if (!settings.CharacterExposure) {
+		// Natural mode (default): Skyrim's own screen-based adaptation does the measuring, so moonlight,
+		// sky and every light on screen count. LTBL only controls how fast it adapts, with the
+		// asymmetric glare and darkness timings. The game decides how bright things end up.
+		if (!wroteLastFrame || bd.hdr.eyeAdaptSpeed != writtenAdaptSpeed)
+			sourceAdaptSpeed = bd.hdr.eyeAdaptSpeed;
+		bd.hdr.eyeAdaptSpeed = std::max(settings.SpeedScale / tau, 0.0001f);
+		writtenAdaptSpeed = bd.hdr.eyeAdaptSpeed;
+		wroteLastFrame = true;
+		lastCompStops = 0.0f;
+		lastLightLevel = light;
+		lastTargetLog = targetLog;
+		lastDuration = duration;
+		return;
+	}
+
+	// Experimental character-measured exposure: compensation is applied as a brightness multiplier.
 	float compStops = settings.Strength * (baseLog - adaptedLog);
 	compStops = std::clamp(compStops, -settings.MaxBrightCutStops, settings.MaxDarkBoostStops);
 	const float exposure = std::exp2(compStops);
 	const float darkAdapted = settings.MaxDarkBoostStops > 0.0f ? Saturate(compStops / settings.MaxDarkBoostStops) : 0.0f;
-
-	auto& bd = ism->GetRuntimeData().data.baseData;
 
 	// If the engine rebuilt the blended values, take them as the new source; otherwise reuse our cached source.
 	if (!wroteLastFrame || bd.cinematic.brightness != writtenBrightness)
@@ -171,8 +205,9 @@ void LTBLEyeAdaptation::EarlyPrepass()
 	writtenSaturation = bd.cinematic.saturation;
 	writtenAdaptStrength = bd.hdr.eyeAdaptStrength;
 	wroteLastFrame = true;
+	lastCompStops = compStops;
+	lastDuration = duration;
 
 	lastLightLevel = light;
 	lastTargetLog = targetLog;
-	lastCompStops = compStops;
 }

@@ -50,8 +50,10 @@ struct LTBLEyeAdaptation : Feature
 		float Strength = 0.85f;           // 1 = full compensation toward baseline
 		float MaxDarkBoostStops = 3.0f;   // the most the eyes can open up in darkness (keeps pitch black barely visible)
 		float MaxBrightCutStops = 2.5f;   // the most the eyes can close down in glare
-		float NightDesaturation = 0.15f;  // subtle loss of color when dark adapted
-		bool DisableVanillaAdaptation = true;
+		float NightDesaturation = 0.15f;  // subtle loss of color when dark adapted (experimental mode)
+		bool DisableVanillaAdaptation = true;  // experimental mode only
+		bool CharacterExposure = false;  // experimental: measure at character instead of the screen
+		float SpeedScale = 1.0f;         // calibration of engine adaptation speed vs. the seconds above
 	};
 
 	Settings settings;
@@ -60,6 +62,7 @@ struct LTBLEyeAdaptation : Feature
 	float lastLightLevel = 0.0f;
 	float lastTargetLog = 0.0f;
 	float lastCompStops = 0.0f;
+	float lastDuration = 0.0f;
 
 private:
 	bool initialized = false;
@@ -72,7 +75,10 @@ private:
 	float writtenBrightness = -1.0f;
 	float writtenSaturation = -1.0f;
 	float writtenAdaptStrength = -1.0f;
+	float sourceAdaptSpeed = 1.0f;
+	float writtenAdaptSpeed = -1.0f;
 	bool wroteLastFrame = false;
+	bool lastCharacterExposure = false;
 
 	float DurationForDarkening(float stopsBelowBaseline) const;
 	void RestoreImagespace();

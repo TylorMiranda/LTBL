@@ -59,6 +59,18 @@ namespace
 		return left && left->Is(RE::FormType::Light);
 	}
 
+	// Rebuild an actor's 3D on the next main-thread tick so a newly equipped torch shows its model and light.
+	void Refresh3D(RE::Actor* actor)
+	{
+		auto handle = actor->GetHandle();
+		if (auto* tasks = SKSE::GetTaskInterface()) {
+			tasks->AddTask([handle]() {
+				if (auto a = handle.get(); a && a->Is3DLoaded())
+					a->Update3DModel();
+			});
+		}
+	}
+
 	float GetLightAt(RE::Actor* actor)
 	{
 		auto* high = actor->GetHighProcess();
@@ -185,7 +197,8 @@ void LTBLTorchBearers::Evaluate(float elapsed)
 		if (blocked) {
 			st.darkTime = st.brightTime = 0.0f;
 			if (st.managed && holding) {
-				equipManager->UnequipObject(actor, torch);
+				equipManager->UnequipObject(actor, torch, nullptr, 1, nullptr, false, false, true, true);
+				Refresh3D(actor);
 				st.managed = false;
 			}
 			continue;
@@ -217,13 +230,16 @@ void LTBLTorchBearers::Evaluate(float elapsed)
 				auto counts = actor->GetInventoryCounts([&](RE::TESBoundObject& obj) { return &obj == torch; });
 				if (counts.empty())
 					actor->AddObjectToContainer(torch, nullptr, 1, nullptr);
-				equipManager->EquipObject(actor, torch);
+				// Apply now, then refresh the actor's 3D so the torch model and its light attach to the hand.
+				equipManager->EquipObject(actor, torch, nullptr, 1, nullptr, false, false, true, true);
+				Refresh3D(actor);
 				st.managed = true;
 				st.darkTime = 0.0f;
 				lightHolders.emplace_back(actor, pos);
 			}
 		} else if (holding && st.managed && st.brightTime >= settings.DwellSeconds) {
-			equipManager->UnequipObject(actor, torch);
+			equipManager->UnequipObject(actor, torch, nullptr, 1, nullptr, false, false, true, true);
+			Refresh3D(actor);
 			st.managed = false;
 			st.brightTime = 0.0f;
 		}

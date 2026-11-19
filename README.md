@@ -1,219 +1,66 @@
-[![Latest Release](https://img.shields.io/github/v/release/doodlum/skyrim-community-shaders)](https://github.com/doodlum/skyrim-community-shaders/releases)
-[![License](https://img.shields.io/github/license/doodlum/skyrim-community-shaders)](./LICENSE)
-[![Last Commit](https://img.shields.io/github/last-commit/doodlum/skyrim-community-shaders)](https://github.com/doodlum/skyrim-community-shaders/commits)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/doodlum/skyrim-community-shaders/release-build.yaml?branch=dev)](https://github.com/doodlum/skyrim-community-shaders/actions)
-[![Discord](https://img.shields.io/discord/1080142797870485606?label=discord&logo=discord&color=5865F2)](https://discord.com/invite/nkrQybAsyy)
-[![Open Issues](https://img.shields.io/github/issues/doodlum/skyrim-community-shaders)](https://github.com/doodlum/skyrim-community-shaders/issues)
-[![Contributors](https://img.shields.io/github/contributors/doodlum/skyrim-community-shaders)](https://github.com/doodlum/skyrim-community-shaders/graphs/contributors)
-[![Stars](https://img.shields.io/github/stars/doodlum/skyrim-community-shaders?style=social)](https://github.com/doodlum/skyrim-community-shaders/stargazers)
+# Let There Be Light (LTBL)
 
-[![Pre-commit CI](https://results.pre-commit.ci/badge/github/doodlum/skyrim-community-shaders/dev.svg)](https://results.pre-commit.ci/latest/github/doodlum/skyrim-community-shaders/dev)
-![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/doodlum/skyrim-community-shaders?utm_source=oss&utm_medium=github&utm_campaign=doodlum%2Fskyrim-community-shaders&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
+**An all-in-one lighting overhaul for Skyrim Special Edition and Anniversary Edition.**
+One mod instead of dozens, built for [Skyrim MAX (Mythic Ascension eXperience)](https://claude.ai/artifact/KiHKbiPKi9EYveaSEfARat): ultra-realistic light with mythic wonder, true to Elder Scrolls lore.
 
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/doodlum/skyrim-community-shaders)
+LTBL is a native SKSE plugin built on the [Community Shaders](https://github.com/doodlum/skyrim-community-shaders) renderer, with a plain-language menu and every feature on by default.
 
-# Skyrim Community Shaders
+> **Status: early development.** Builds compile and publish automatically. In-game testing and calibration are under way.
 
-SKSE core plugin for community-driven advanced graphics modifications.
+## Download
 
-[Nexus](https://www.nexusmods.com/skyrimspecialedition/mods/86492)
-[User Wiki](https://modding.wiki/en/skyrim/developers/community-shaders)
+**[LetThereBeLight-AIO.7z (latest build)](https://github.com/TylorMiranda/LTBL/releases/download/latest/LetThereBeLight-AIO.7z)**
 
-## Requirements
+1. Save it to your Mod Organizer 2 `downloads` folder, or install it with **Install a new mod from an archive**.
+2. Disable any existing Community Shaders install and any ENB. LTBL replaces both.
+3. Requires [SKSE](https://skse.silverlock.org/) and [Address Library for SKSE Plugins](https://www.nexusmods.com/skyrimspecialedition/mods/32444).
+4. In game, press **END** to open the menu.
 
--   Any terminal of your choice (e.g., PowerShell)
--   [Visual Studio Community 2026](https://visualstudio.microsoft.com/)
-    -   Desktop development with C++
-    -   CMake Tools for Windows
-    -   HLSL Tools
--   [Git](https://git-scm.com/downloads)
-    -   Edit the `PATH` environment variable and add the Git.exe install path as a new value
+## What's in the current build
 
-## Optional Requirements
+### Eye Adaptation
+Your view adapts to light and darkness the way real eyes do, measured at your character so first and third person behave the same.
+- Stepping into brighter light causes glare that settles over **1 to 10 seconds**, longer the brighter it is.
+- Darkness adapts over **20 to 90 seconds**: about 20 in very dim light, 60 in very dark places, 90 in pitch black, where you can only just make out nearby shapes.
+- Fast at first, then easing off; smooth and frame-rate independent with no visible stepping.
 
-```
-CMake & Vcpkg comes with Visual Studio in Developer Command Prompts already.
-Install them manually only if you want them in everywhere.
-```
+### Torch Bearers
+NPCs and followers draw torches when it is dark where they stand, indoors or out.
+- Based on the real light level at each NPC, with separate on and off thresholds so nobody flickers between equipping and unequipping.
+- One torch per group. Put away when mounted, sitting, sleeping or sneaking, and never used inside wooden or civilized buildings.
 
--   [CMake](https://cmake.org/)
-    -   No need to install manually if you have Visual Studio CMake Tools installed
-    -   CMake 4.2+ is **required** now
-    -   Edit the `PATH` environment variable and add the cmake.exe install path as a new value
-    -   Instructions for finding and editing the `PATH` environment variable can be found [here](https://www.java.com/en/download/help/path.html)
--   [Vcpkg](https://github.com/microsoft/vcpkg)
-    -   Install vcpkg using the directions in vcpkg's [Quick Start Guide](https://github.com/microsoft/vcpkg#quick-start-windows)
-    -   After install, add a new environment variable named `VCPKG_ROOT` with the value as the path to the folder containing vcpkg
-    -   Make sure your local vcpkg repo matches the commit id specified in `builtin-baseline` in `vcpkg.json` otherwise you might get another version of a non pinned vcpkg dependency causing undefined behaviour
+### Candlelight Aura and Tomes
+Candlelight lights a wide, soft area around you instead of a bright floating orb.
+- It starts dim and grows brighter with each Candlelight tome you find, reaching full brightness at **10**.
+- Tomes appear as **extra** loot in urns, coffins and chests of dungeons, caves and ruins: 1 to 2 in small ones, 2 to 4 in normal ones, 5 or more in huge ones. They are added at runtime, so no loot lists are edited and nothing is replaced.
+- Once you have found 10, they stop appearing and any unlooted ones LTBL added are removed. Vendors keep stocking the tome.
+- Followers never get the spell; they carry torches.
 
-## User Requirements
+### Community Shaders underneath
+Unlimited lights (Light Limit Fix), inverse-square falloff, screen-space global illumination, skylighting, volumetric lighting, PBR materials, HDR output, upscaling and frame generation, and the rest of the Community Shaders feature set, all enabled by default.
 
--   [Address Library for SKSE](https://www.nexusmods.com/skyrimspecialedition/mods/32444)
-    -   Needed for SSE/AE
+## Roadmap
 
-## Build Instructions
+- **Light Director:** automatic, correctly sized and shadowed lights for every flame, ember and glowing object in any load order, with no patches.
+- **49 new light sources** that glow but don't emit light today, from word walls and standing stones to Dwarven centurion furnaces and fire salts.
+- **Optical profiles:** each material handles light its own way, including animal eyeshine, iridescent scales, glossy versus light-absorbing black, and glowing life versus fire versus magic.
+- **Interior and exterior light matching:** windows and openings carry the real sun, moon, weather and time of day indoors.
+- **Particles:** every particle lit and shadowed by the scene, one shared wind, no upscaler ghosting.
+- **Neural lighting tier:** lightweight and optional, with automatic VRAM budgeting read at startup and adjusted in real time.
+- Genre presets, a Mythic slider group, and per-type colorblind modes.
 
-### Clone the Repository with submodules
+## Building
 
-To clone the repository with all submodules, run the following command in your terminal:
+LTBL builds on Windows with Visual Studio 2022+ and vcpkg, exactly like Community Shaders:
 
-```bash
-git clone https://github.com/doodlum/skyrim-community-shaders.git --recursive
-cd skyrim-community-shaders
+```bat
+BuildRelease.bat
 ```
 
-### Visual Studio build
+Every push to `main` is built by GitHub Actions, which publishes the all-in-one archive to the [latest release](https://github.com/TylorMiranda/LTBL/releases/tag/latest).
 
-To build the project, just open `./skyrim-community-shaders` with Visual Studio's "Open Folder" feature. (Ensure you have `CMake Tools for Windows` selected when installing VS)
+## Credits and license
 
-Follow the prompts to `Configure` and `Build` the project.
-It should generate the AIO package in the `./build/ALL/aio` folder by default.
+LTBL is a fork of [Skyrim Community Shaders](https://github.com/doodlum/skyrim-community-shaders) by doodlum and the Community Shaders contributors, and is distributed under the same **GPL-3.0** license (see `COPYING` and `EXCEPTIONS.md`). Thanks to everyone whose work Community Shaders is built on.
 
-#### Zip package & Optional targets
-
-If you change the `Solution Explorer` into `CMake Targets View`, you can find optional targets to create zip packages for each feature.
-Right click on the target and select `Build` to create the zip package in `./dist/`.
-
-### Advanced build with CMake in command line
-
-Open the "Developer PowerShell for VS 2026" or the "x64 Native Tools Command Prompt" (these set up the Visual Studio toolchain for you).
-
-Then from the repository root run:
-
-```pwsh
-# Generate the build files (uses the ALL preset)
-cmake --preset ALL
-
-# Build using the preset
-cmake --build --preset ALL
-
-# Install an AIO package somewhere, e.g. $MOD_FOLDER
-cmake --install --preset ALL -- --prefix $MOD_FOLDER
-```
-
-# Notes
-
--   If you prefer to run the VC environment manually, launch Developer PowerShell or the x64 Native Tools prompt instead of calling vcvarsall.bat directly from PowerShell.
--   The convenience wrapper `BuildRelease.bat` also captures these steps.
-
-#### Build a zip package
-
-You can build zip packages for optional cmake targets.
-Currently support `AIO_ZIP_PACKAGE`, `Package-AIO-Manual`, `Package-Core`, and `Package-<Feature>`:
-
-```pwsh
-# Create a AIO package in ./dist/
-# Automated AIO zip (requires AIO_ZIP_TO_DIST=ON)
-cmake --build ./build/ALL --config Release --target AIO_ZIP_PACKAGE
-
-# Manual AIO package (install + tar)
-cmake --build ./build/ALL --config Release --target Package-AIO-Manual
-
-# Create a CommunityShaders core package in ./dist/
-cmake --build ./build/ALL --config Release --target Package-Core
-
-# Create a feature package in ./dist/ (example: GrassLighting)
-cmake --build ./build/ALL --config Release --target Package-GrassLighting
-```
-
-For more details about packaging targets, options, and the difference between automated and manual packaging, see the "Manual packaging targets (detailed)" section in `.claude/CLAUDE.md`.
-
-#### CMAKE Options (optional)
-
-If you want an example CMakeUserPreset to start off with you can copy the `CMakeUserPresets.json.template` -> `CMakeUserPresets.json`
-
-#### AUTO_PLUGIN_DEPLOYMENT
-
--   This option is default `"OFF"`
--   Make sure `"AUTO_PLUGIN_DEPLOYMENT"` is set to `"ON"` in `CMakeUserPresets.json`
--   Change the `"CommunityShadersOutputDir"` value to match your desired outputs, if you want multiple folders you can separate them by `;` is shown in the template example
-
-#### TRACY_SUPPORT
-
--   This option is default `"OFF"`
--   This will enable tracy support, might need to delete build folder when this option is changed
-
-When using custom preset you can call BuildRelease.bat with an parameter to specify which preset to configure eg:
-`.\BuildRelease.bat ALL-WITH-AUTO-DEPLOYMENT`
-
-When switching between different presets you might need to remove the build folder
-
-### Build with Docker
-
-For those who prefer to not install Visual Studio or other build dependencies on their machine, this encapsulates it. This uses Windows Containers, so no WSL for now.
-
-1. Install [Docker](https://www.docker.com/products/docker-desktop/) first if not already there.
-2. In a shell of your choice run to switch to Windows containers and create the build container:
-
-```pwsh
-& 'C:\Program Files\Docker\Docker\DockerCli.exe' -SwitchWindowsEngine; `
-docker build -t skyrim-community-shaders .
-```
-
-3. Then run the build:
-
-```pwsh
-docker run -it --rm -v .:C:/skyrim-community-shaders skyrim-community-shaders:latest
-```
-
-4. Retrieve the generated build files from the `build/aio` folder.
-5. In subsequent builds only run the build step (3.)
-
-#### Troubleshooting Build with Docker
-
-If you run into `Access violation` build errors during step 3, you can try adding [`--isolation=process`](https://learn.microsoft.com/en-us/virtualization/windowscontainers/manage-containers/hyperv-container):
-
-```pwsh
-docker run -it --rm --isolation=process -v .:C:/skyrim-community-shaders skyrim-community-shaders:latest
-```
-
-## Debugging
-
-### Launching MO2-SKSE-Skyrim from commandline
-
-1. Open Steam
-2. Close ModOrganizer GUI
-3. Add `ModOrganizer.exe` (MO2 Folder) to your PATH, or use the path of it
-4. Run the commands:
-
-```pwsh
-# Change Working Directory
-cd "C:/Program Files (x86)/Steam/steamapps/common/Skyrim Special Edition"
-# Launch SKSE with MO2
-ModOrganizer.exe --log run "C:\Program Files (x86)\Steam\steamapps\common\Skyrim Special Edition\skse64_loader.exe"
-```
-
-### Capture with RenderDoc
-
-In Launch Application Menu, use the following settings:
-
--   Executable Path: `PATH/TO/ModOrganizer.exe`
--   Working Directory: `C:/Program Files (x86)/Steam/steamapps/common/Skyrim Special Edition`
--   Command-line Arguments: `--log run "C:\Program Files (x86)\Steam\steamapps\common\Skyrim Special Edition\skse64_loader.exe"`
--   [x] **Capture Child Process**
-
-## License
-
-### Default
-
-[GPL-3.0-or-later](COPYING) WITH [Modding Exception AND GPL-3.0 Linking Exception (with Corresponding Source)](EXCEPTIONS.md).  
-Specifically, the Modded Code includes:
-
--   Skyrim (and its variants)
--   Hardware drivers to enable additional functionality provided via proprietary SDKs, such as [Nvidia DLSS](https://developer.nvidia.com/rtx/dlss/get-started) and [AMD FidelityFX FSR3](https://gpuopen.com/fidelityfx-super-resolution-3/)
-
-The Modding Libraries include:
-
--   [SKSE](https://skse.silverlock.org/)
--   Commonlib (and variants).
-
-### Shaders
-
-See LICENSE within each directory; if none, it's [Default](#default)
-
--   [Features Shaders](features)
--   [Package Shaders](package/Shaders/)
-
-### Icons
-
--   [Community Shaders Logo](package/Interface/CommunityShaders/Icons/Community%20Shaders%20Logo/) is not covered by the GPL-3.0 license. It is provided solely for personal use (e.g., building from source) and may only be used in unmodified form. There is no license for any other purpose or to distribute the logo. No trademark license is granted for the logo. Any use not expressly permitted is prohibited without the express written consent of the Community Shaders team.
+LTBL by Tylor Miranda, for Skyrim MAX.

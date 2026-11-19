@@ -3,6 +3,7 @@ name: "LTBL Build"
 on:
     push:
         branches: [main]
+        tags: ["v*"]
         paths-ignore:
             - "README.md"
             - "docs/**"
@@ -27,6 +28,8 @@ jobs:
         runs-on: ubuntu-latest
         permissions:
             contents: write
+        env:
+            IS_TAG: ${{ startsWith(github.ref, 'refs/tags/v') }}
         steps:
             - name: Download build output
               uses: actions/download-artifact@v4
@@ -39,24 +42,43 @@ jobs:
               run: |
                   f=$(ls dist/*_AIO-*.7z | head -n1)
                   mkdir -p out
-                  cp "$f" "out/LetThereBeLight-AIO.7z"
+                  if [ "$IS_TAG" = "true" ]; then
+                    name="LetThereBeLight-${GITHUB_REF_NAME}.7z"
+                  else
+                    name="LetThereBeLight-AIO.7z"
+                  fi
+                  cp "$f" "out/$name"
+                  echo "file=out/$name" >> "$GITHUB_OUTPUT"
                   echo "built=$(basename "$f")" >> "$GITHUB_OUTPUT"
 
             - name: Remove the previous "latest" release
+              if: env.IS_TAG != 'true'
               env:
                   GH_TOKEN: ${{ github.token }}
               run: gh release delete latest --cleanup-tag -y -R "${{ github.repository }}" || true
 
-            - name: Publish to the "latest" release
+            - name: Publish the latest build
+              if: env.IS_TAG != 'true'
               uses: softprops/action-gh-release@v2
               with:
                   tag_name: latest
                   name: "Let There Be Light (latest build)"
                   prerelease: true
-                  make_latest: true
+                  make_latest: false
                   body: |
-                      Latest automatic build of Let There Be Light.
+                      Latest automatic build of Let There Be Light. May be untested.
                       Install in MO2: Downloads > Install a new mod from an archive > LetThereBeLight-AIO.7z
                       Source package: ${{ steps.pick.outputs.built }}
                       Commit: ${{ github.sha }}
-                  files: out/LetThereBeLight-AIO.7z
+                  files: ${{ steps.pick.outputs.file }}
+
+            - name: Publish the versioned release
+              if: env.IS_TAG == 'true'
+              uses: softprops/action-gh-release@v2
+              with:
+                  tag_name: ${{ github.ref_name }}
+                  name: "Let There Be Light ${{ github.ref_name }}"
+                  prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}
+                  make_latest: true
+                  body_path: docs/release-notes/${{ github.ref_name }}.md
+                  files: ${{ steps.pick.outputs.file }}

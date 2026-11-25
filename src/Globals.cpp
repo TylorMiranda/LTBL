@@ -15,6 +15,7 @@
 #include "Features/IBL.h"
 #include "Features/InteriorSun.h"
 #include "Features/LTBL/Candlelight.h"
+#include "Features/LTBL/WorldLight.h"
 #include "Features/LTBL/TorchBearers.h"
 #include "Features/InverseSquareLighting.h"
 #include "Features/LODBlending.h"
@@ -75,6 +76,7 @@ namespace globals
 		InteriorSun interiorSun{};
 		LTBLTorchBearers ltblTorchBearers{};
 		LTBLCandlelight ltblCandlelight{};
+		LTBLWorldLight ltblWorldLight{};
 		InverseSquareLighting inverseSquareLighting{};
 		ScreenSpaceGI screenSpaceGI{};
 		ScreenSpaceShadows screenSpaceShadows{};

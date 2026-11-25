@@ -17,6 +17,7 @@
 #include "Features/IBL.h"
 #include "Features/InteriorSun.h"
 #include "Features/LTBL/Candlelight.h"
+#include "Features/LTBL/WorldLight.h"
 #include "Features/LTBL/TorchBearers.h"
 #include "Features/InverseSquareLighting.h"
 #include "Features/LODBlending.h"
@@ -247,6 +248,7 @@ const std::vector<Feature*>& Feature::GetFeatureList()
 		&globals::features::interiorSun,
 		&globals::features::ltblTorchBearers,
 		&globals::features::ltblCandlelight,
+		&globals::features::ltblWorldLight,
 		&globals::features::terrainVariation,
 		&globals::features::ibl,
 		&globals::features::extendedTranslucency,

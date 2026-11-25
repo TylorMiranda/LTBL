@@ -17,6 +17,7 @@ struct LODBlending;
 struct InteriorSun;
 struct LTBLTorchBearers;
 struct LTBLCandlelight;
+struct LTBLWorldLight;
 struct InverseSquareLighting;
 struct ScreenSpaceGI;
 struct ScreenSpaceShadows;
@@ -108,6 +109,7 @@ namespace globals
 		extern InteriorSun interiorSun;
 		extern LTBLTorchBearers ltblTorchBearers;
 		extern LTBLCandlelight ltblCandlelight;
+		extern LTBLWorldLight ltblWorldLight;
 		extern InverseSquareLighting inverseSquareLighting;
 		extern ScreenSpaceGI screenSpaceGI;
 		extern ScreenSpaceShadows screenSpaceShadows;

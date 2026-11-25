@@ -18,11 +18,6 @@ LTBL is a native SKSE plugin built on the [Community Shaders](https://github.com
 
 ## What's in the current build
 
-### Eye Adaptation
-Your view adapts to light and darkness the way real eyes do, measured at your character so first and third person behave the same.
-- Stepping into brighter light causes glare that settles over **1 to 10 seconds**, longer the brighter it is.
-- Darkness adapts over **20 to 90 seconds**: about 20 in very dim light, 60 in very dark places, 90 in pitch black, where you can only just make out nearby shapes.
-- Fast at first, then easing off; smooth and frame-rate independent with no visible stepping.
 
 ### Torch Bearers
 NPCs and followers draw torches when it is dark where they stand, indoors or out.

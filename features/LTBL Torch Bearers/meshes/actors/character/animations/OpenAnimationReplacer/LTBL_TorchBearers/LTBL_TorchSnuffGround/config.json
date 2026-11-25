@@ -1,0 +1,19 @@
+{
+    "name": "Snuff torch on ground",
+    "description": "Squat, grind the head into the ground until it dies, stow over the shoulder.",
+    "priority": 1350007102,
+    "conditions": [
+        {
+            "condition": "CompareValues",
+            "requiredVersion": "1.0.0.0",
+            "Value A": {
+                "actorValue": 77,
+                "actorValueType": "Value"
+            },
+            "Comparison": "==",
+            "Value B": {
+                "value": 7102.0
+            }
+        }
+    ]
+}

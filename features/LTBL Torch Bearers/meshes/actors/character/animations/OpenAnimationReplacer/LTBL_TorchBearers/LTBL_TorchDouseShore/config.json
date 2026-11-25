@@ -1,0 +1,19 @@
+{
+    "name": "Douse torch at shore or puddle",
+    "description": "Kneel at the water's edge, plunge and swish the head, flick it dry, stow.",
+    "priority": 1350007103,
+    "conditions": [
+        {
+            "condition": "CompareValues",
+            "requiredVersion": "1.0.0.0",
+            "Value A": {
+                "actorValue": 77,
+                "actorValueType": "Value"
+            },
+            "Comparison": "==",
+            "Value B": {
+                "value": 7103.0
+            }
+        }
+    ]
+}

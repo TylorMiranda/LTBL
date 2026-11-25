@@ -1,0 +1,19 @@
+{
+    "name": "Light torch",
+    "description": "Reach over the left shoulder, draw the torch, strike flint at the head until it catches, raise to carry.",
+    "priority": 1350007101,
+    "conditions": [
+        {
+            "condition": "CompareValues",
+            "requiredVersion": "1.0.0.0",
+            "Value A": {
+                "actorValue": 77,
+                "actorValueType": "Value"
+            },
+            "Comparison": "==",
+            "Value B": {
+                "value": 7101.0
+            }
+        }
+    ]
+}

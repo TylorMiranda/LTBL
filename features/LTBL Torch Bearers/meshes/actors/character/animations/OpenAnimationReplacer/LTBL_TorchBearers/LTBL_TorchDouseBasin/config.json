@@ -1,0 +1,19 @@
+{
+    "name": "Douse torch in trough, barrel or well",
+    "description": "Lean over the basin, dip and stir the head, flick it dry, stow.",
+    "priority": 1350007104,
+    "conditions": [
+        {
+            "condition": "CompareValues",
+            "requiredVersion": "1.0.0.0",
+            "Value A": {
+                "actorValue": 77,
+                "actorValueType": "Value"
+            },
+            "Comparison": "==",
+            "Value B": {
+                "value": 7104.0
+            }
+        }
+    ]
+}

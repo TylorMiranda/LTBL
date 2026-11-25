@@ -13,12 +13,15 @@
 // - Stowed when mounted, sitting, sleeping, sneaking, or inside wooden/civilized buildings.
 // - Combat freezes the current state. Guards are left to vanilla behavior by default.
 //
-// Animated sequences (enabled automatically once LTBL's torch animations are installed):
-// - Lighting: reach back, draw the torch, light it with the other hand.
-// - Putting out: walk to the nearest water (river, lake, pond, creek, puddle in rain, trough,
-//   well, barrel) and douse it there, or snuff it on the ground if no water is close.
-// Until the animations exist, torches are equipped and put away without animation, so
-// nothing wrong ever plays.
+// Animated sequences (LTBL ships them as an Open Animation Replacer pack):
+// - Lighting: reach over the left shoulder, draw the torch, strike flint at the head, raise to carry.
+// - Putting out: walk to the nearest water and douse it there (kneel at a shore or puddle, lean
+//   over a trough, barrel or well), or snuff it on the ground if no water is close; then stow it.
+// The clips replace a vanilla idle only while LTBL marks the actor (Variable10 = 7101..7104).
+// During a clip the torch in hand is a visual prop with its own flame and light, so the
+// engine's left-hand torch pose never fights the animation. The real torch is equipped at the
+// exact frame the clip reaches the vanilla carry pose. Without OAR or the pack, torches change
+// without animation, so nothing wrong ever plays.
 
 struct LTBLTorchBearers : Feature
 {
@@ -61,14 +64,7 @@ struct LTBLTorchBearers : Feature
 		bool DouseInWater = true;
 		float WaterSearchRadius = 1800.0f;  // game units; ~25 meters
 		float WalkTimeout = 25.0f;          // give up walking and snuff where they are
-		// Animation contract (see the LTBL torch animation spec)
-		std::string LightEvent = "LTBL_TorchLight";
-		std::string SnuffEvent = "LTBL_TorchSnuff";
-		float LightFlameAt = 2.4f;   // seconds into the lighting animation when the torch catches
-		float LightDuration = 3.6f;
-		float SnuffFlameAt = 1.6f;   // seconds into the snuff animation when the flame goes out
-		float SnuffDuration = 2.8f;
-		bool ForceAnimations = false;  // play animation events even if the files are not detected
+		bool ForceAnimations = false;  // play the clips even if the pack is not detected
 	};
 
 	Settings settings;
@@ -90,8 +86,9 @@ private:
 	{
 		kNone = 0,
 		kLight = 1,
-		kWater = 2,
-		kGround = 3
+		kWater = 2,  // shore or puddle: kneel
+		kGround = 3,
+		kBasin = 4   // trough, barrel, well, fountain: lean over
 	};
 
 	struct ActorState
@@ -103,8 +100,15 @@ private:
 		bool managed = false;     // we equipped this torch, so we may put it away
 		Phase phase = Phase::kIdle;
 		float phaseTime = 0.0f;
-		bool flameDone = false;
+		bool step1 = false;  // lighting: prop appears / putting out: flame dies
+		bool step2 = false;  // lighting: flame catches / putting out: torch stowed
 		SnuffKind kind = SnuffKind::kNone;
+		float savedMarker = 0.0f;
+		bool markerSet = false;
+		bool propOn = false;
+		bool propLit = false;
+		RE::NiPointer<RE::NiNode> prop;
+		RE::NiPointer<RE::NiPointLight> propLight;
 		RE::NiPoint3 walkTarget{};
 		RE::ObjectRefHandle marker{};
 		RE::ActorHandle handle{};
@@ -124,6 +128,11 @@ private:
 	void StartLighting(RE::Actor* actor, ActorState& st);
 	void StartPuttingOut(RE::Actor* actor, ActorState& st);
 	void BeginSnuffAnimation(RE::Actor* actor, ActorState& st, SnuffKind kind);
+	bool PlayClip(RE::Actor* actor, ActorState& st, SnuffKind kind);
+	void RestoreMarker(RE::Actor* actor, ActorState& st);
+	void SetProp(RE::Actor* actor, ActorState& st, bool on, bool lit);
+	void RemoveProp(ActorState& st);
+	void CleanupState(ActorState& st);
 	void FinishSequence(RE::Actor* actor, ActorState& st);
 	void CancelSequence(RE::Actor* actor, ActorState& st);
 	bool FindWater(RE::Actor* actor, RE::NiPoint3& outPoint, RE::TESObjectREFR*& outRef) const;

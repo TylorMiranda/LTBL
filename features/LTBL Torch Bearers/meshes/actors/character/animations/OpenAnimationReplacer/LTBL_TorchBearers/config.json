@@ -1,0 +1,5 @@
+{
+    "name": "LTBL Torch Bearers",
+    "author": "Let There Be Light",
+    "description": "Torch lighting and putting-out sequences for NPCs. Played only when Let There Be Light marks the actor (Variable10). Built on CMU motion capture data, retargeted and keyed for Skyrim."
+}

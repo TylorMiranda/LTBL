@@ -28,19 +28,40 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 	DouseInWater,
 	WaterSearchRadius,
 	WalkTimeout,
-	LightEvent,
-	SnuffEvent,
-	LightFlameAt,
-	LightDuration,
-	SnuffFlameAt,
-	SnuffDuration,
 	ForceAnimations)
 
 namespace
 {
 	constexpr RE::FormID kTorch01 = 0x0001D4EC;  // Skyrim.esm Torch01
 	constexpr RE::FormID kXMarker = 0x0000003B;  // Skyrim.esm XMarker
-	constexpr const char* kGraphVariable = "iLTBL_TorchAction";
+	constexpr const char* kHostEvent = "IdlePickup_Ground";       // vanilla single-play idle the pack replaces
+	constexpr const char* kStopEvent = "IdleForceDefaultState";
+	constexpr float kMarkerBase = 7100.0f;                       // Variable10 = 7100 + SnuffKind
+
+	// Timings baked into the clips (seconds). a/b: lighting = prop appears / flame catches;
+	// putting out = flame dies / torch stowed. dur = clip length.
+	struct ClipTiming
+	{
+		float a, b, dur;
+	};
+	constexpr ClipTiming kLightClip{ 0.62f, 2.40f, 3.60f };
+	constexpr ClipTiming kGroundClip{ 1.25f, 2.78f, 3.40f };
+	constexpr ClipTiming kWaterClip{ 1.15f, 3.02f, 3.60f };
+	constexpr ClipTiming kBasinClip{ 0.95f, 2.42f, 3.00f };
+
+	const ClipTiming& TimingFor(std::int32_t kind)
+	{
+		switch (kind) {
+		case 1:
+			return kLightClip;
+		case 2:
+			return kWaterClip;
+		case 4:
+			return kBasinClip;
+		default:
+			return kGroundClip;
+		}
+	}
 	constexpr const char* kAnimationFolder = "Data/meshes/actors/character/animations/OpenAnimationReplacer/LTBL_TorchBearers";
 	constexpr float kArriveDistance = 160.0f;
 
@@ -163,6 +184,36 @@ namespace
 		return vm->DispatchMethodCall(handle, "Actor", "PathToReference", args, callback);
 	}
 
+	RE::NiNode* ShieldNode(RE::Actor* actor)
+	{
+		auto* root = actor ? actor->Get3D(false) : nullptr;
+		auto* obj = root ? root->GetObjectByName("SHIELD") : nullptr;
+		return obj ? obj->AsNode() : nullptr;
+	}
+
+	RE::NiPointer<RE::NiNode> LoadTorchModel(RE::TESObjectLIGH* torch)
+	{
+		const char* model = torch ? torch->GetModel() : nullptr;
+		if (!model || !*model)
+			return nullptr;
+		std::string path = std::string("meshes\\") + model;
+		RE::BSModelDB::DBTraits::ArgsType args{};
+		RE::NiPointer<RE::NiNode> nif;
+		if (RE::BSModelDB::Demand(path.c_str(), nif, args) != RE::BSResource::ErrorCode::kNone || !nif)
+			return nullptr;
+		auto* clone = nif->Clone();
+		return RE::NiPointer<RE::NiNode>(clone ? clone->AsNode() : nullptr);
+	}
+
+	void FaceTowards(RE::Actor* actor, const RE::NiPoint3& point)
+	{
+		const auto pos = actor->GetPosition();
+		const float dx = point.x - pos.x;
+		const float dy = point.y - pos.y;
+		if (dx * dx + dy * dy > 1.0f)
+			actor->SetHeading(std::atan2(dx, dy));
+	}
+
 	void DeleteMarker(RE::ObjectRefHandle& marker)
 	{
 		if (auto ref = marker.get()) {
@@ -208,11 +259,8 @@ void LTBLTorchBearers::DrawSettings()
 			ImGui::TextColored(ImVec4(0.5f, 0.85f, 0.5f, 1.0f), "%s", T(TKEY("anim_found"), "Torch animations installed."));
 		else
 			ImGui::TextDisabled("%s", T(TKEY("anim_missing"), "Torch animations not installed yet. Torches change without animation."));
-		ImGui::Checkbox(T(TKEY("force_anim"), "Play animation events anyway (for animators)"), &settings.ForceAnimations);
-		ImGui::SliderFloat(T(TKEY("light_flame"), "Torch catches at (s)"), &settings.LightFlameAt, 0.0f, 10.0f, "%.2f");
-		ImGui::SliderFloat(T(TKEY("light_len"), "Lighting animation length (s)"), &settings.LightDuration, 0.5f, 12.0f, "%.2f");
-		ImGui::SliderFloat(T(TKEY("snuff_flame"), "Flame goes out at (s)"), &settings.SnuffFlameAt, 0.0f, 10.0f, "%.2f");
-		ImGui::SliderFloat(T(TKEY("snuff_len"), "Snuff animation length (s)"), &settings.SnuffDuration, 0.5f, 12.0f, "%.2f");
+		ImGui::TextDisabled("%s", T(TKEY("anim_list"), "Light (draw, strike flint), snuff on ground, douse at shore or puddle, douse in trough, barrel or well."));
+		ImGui::Checkbox(T(TKEY("force_anim"), "Play the clips even if the pack is not detected"), &settings.ForceAnimations);
 		ImGui::TreePop();
 	}
 
@@ -238,7 +286,7 @@ void LTBLTorchBearers::DataLoaded()
 void LTBLTorchBearers::GameLoaded()
 {
 	for (auto& [id, st] : states)
-		DeleteMarker(st.marker);
+		CleanupState(st);
 	states.clear();
 	timer = 0.0f;
 	activeSequences = 0;
@@ -296,18 +344,15 @@ void LTBLTorchBearers::StartLighting(RE::Actor* actor, ActorState& st)
 	if (counts.empty())
 		actor->AddObjectToContainer(torch, nullptr, 1, nullptr);
 
-	if (!UseAnimations()) {
+	if (!UseAnimations() || !PlayClip(actor, st, SnuffKind::kLight)) {
 		RE::ActorEquipManager::GetSingleton()->EquipObject(actor, torch, nullptr, 1, nullptr, false, false, true, true);
 		Refresh3D(actor);
 		st.managed = true;
 		return;
 	}
-
-	actor->SetGraphVariableInt(kGraphVariable, static_cast<std::int32_t>(SnuffKind::kLight));
-	actor->NotifyAnimationGraph(settings.LightEvent);
 	st.phase = Phase::kLighting;
 	st.phaseTime = 0.0f;
-	st.flameDone = false;
+	st.step1 = st.step2 = false;
 	st.kind = SnuffKind::kLight;
 	st.managed = true;
 }
@@ -325,9 +370,18 @@ void LTBLTorchBearers::StartPuttingOut(RE::Actor* actor, ActorState& st)
 		RE::NiPoint3 point;
 		RE::TESObjectREFR* waterRef = nullptr;
 		if (FindWater(actor, point, waterRef)) {
+			// Troughs, barrels, wells and fountains are waist high; puddle meshes and shores are not.
+			SnuffKind kind = SnuffKind::kWater;
+			if (waterRef) {
+				auto* model = waterRef->GetBaseObject() ? waterRef->GetBaseObject()->As<RE::TESModel>() : nullptr;
+				const char* path = model ? model->GetModel() : nullptr;
+				if (!path || ToLower(path).find("puddle") == std::string::npos)
+					kind = SnuffKind::kBasin;
+			}
+			st.walkTarget = point;
 			// Already at the water: douse it right here.
 			if (actor->GetPosition().GetDistance(point) <= kArriveDistance) {
-				BeginSnuffAnimation(actor, st, SnuffKind::kWater);
+				BeginSnuffAnimation(actor, st, kind);
 				return;
 			}
 			RE::TESObjectREFR* target = waterRef;
@@ -341,8 +395,7 @@ void LTBLTorchBearers::StartPuttingOut(RE::Actor* actor, ActorState& st)
 			if (target && PathToReference(actor, target)) {
 				st.phase = Phase::kWalkingToWater;
 				st.phaseTime = 0.0f;
-				st.walkTarget = point;
-				st.kind = SnuffKind::kWater;
+				st.kind = kind;
 				return;
 			}
 			DeleteMarker(st.marker);
@@ -354,19 +407,150 @@ void LTBLTorchBearers::StartPuttingOut(RE::Actor* actor, ActorState& st)
 void LTBLTorchBearers::BeginSnuffAnimation(RE::Actor* actor, ActorState& st, SnuffKind kind)
 {
 	DeleteMarker(st.marker);
-	actor->SetGraphVariableInt(kGraphVariable, static_cast<std::int32_t>(kind));
-	actor->NotifyAnimationGraph(settings.SnuffEvent);
+	if (kind != SnuffKind::kGround)
+		FaceTowards(actor, st.walkTarget);
+
+	auto* equipManager = RE::ActorEquipManager::GetSingleton();
+	if (!PlayClip(actor, st, kind)) {
+		equipManager->UnequipObject(actor, torch, nullptr, 1, nullptr, false, false, true, true);
+		Refresh3D(actor);
+		st.managed = false;
+		st.phase = Phase::kIdle;
+		st.kind = SnuffKind::kNone;
+		return;
+	}
+	// The clip starts in the vanilla carry pose: swap the real torch for the lit prop on this frame.
+	equipManager->UnequipObject(actor, torch, nullptr, 1, nullptr, false, false, true, true);
+	Refresh3D(actor);
+	SetProp(actor, st, true, true);
+	st.managed = false;
 	st.phase = Phase::kSnuffing;
 	st.phaseTime = 0.0f;
-	st.flameDone = false;
+	st.step1 = st.step2 = false;
 	st.kind = kind;
+}
+
+bool LTBLTorchBearers::PlayClip(RE::Actor* actor, ActorState& st, SnuffKind kind)
+{
+	auto* avo = actor->AsActorValueOwner();
+	if (!avo)
+		return false;
+	if (!st.markerSet) {
+		st.savedMarker = avo->GetActorValue(RE::ActorValue::kVariable10);
+		st.markerSet = true;
+	}
+	avo->SetActorValue(RE::ActorValue::kVariable10, kMarkerBase + static_cast<float>(kind));
+	if (actor->NotifyAnimationGraph(kHostEvent))
+		return true;
+	RestoreMarker(actor, st);
+	return false;
+}
+
+void LTBLTorchBearers::RestoreMarker(RE::Actor* actor, ActorState& st)
+{
+	if (!st.markerSet)
+		return;
+	if (actor) {
+		if (auto* avo = actor->AsActorValueOwner())
+			avo->SetActorValue(RE::ActorValue::kVariable10, st.savedMarker);
+	}
+	st.markerSet = false;
+}
+
+void LTBLTorchBearers::SetProp(RE::Actor* actor, ActorState& st, bool on, bool lit)
+{
+	if (!on) {
+		RemoveProp(st);
+		return;
+	}
+	auto* shield = ShieldNode(actor);
+	if (!st.prop)
+		st.prop = LoadTorchModel(torch);
+	if (!st.prop || !shield)
+		return;
+	if (st.prop->parent != shield) {
+		if (st.prop->parent)
+			st.prop->parent->DetachChild(st.prop.get());
+		shield->AttachChild(st.prop.get(), true);
+		RE::NiUpdateData ud{};
+		st.prop->UpdateWorldData(&ud);
+	}
+	st.propOn = true;
+
+	if (auto* fire = st.prop->GetObjectByName("TorchFire"))
+		fire->SetAppCulled(!lit);
+
+	auto* ssn = globals::game::smState ? globals::game::smState->shadowSceneNode[0] : nullptr;
+	if (lit && !st.propLight && ssn) {
+		RE::NiPointer<RE::NiPointLight> light(RE::NiPointLight::Create());
+		if (light) {
+			light->name = "LTBL_TorchPropLight";
+			auto& d = light->GetLightRuntimeData();
+			const float r = static_cast<float>(torch->data.radius);
+			d.ambient = { 0.0f, 0.0f, 0.0f };
+			d.diffuse = { torch->data.color.red / 255.0f, torch->data.color.green / 255.0f, torch->data.color.blue / 255.0f };
+			d.radius = { r, r, r };
+			d.fade = torch->fade;
+			light->SetLightAttenuation(r);
+			auto* attachObj = st.prop->GetObjectByName("AttachLight");
+			auto* attach = attachObj ? attachObj->AsNode() : nullptr;
+			(attach ? attach : st.prop.get())->AttachChild(light.get(), true);
+			RE::ShadowSceneNode::LIGHT_CREATE_PARAMS params{};
+			params.dynamic = true;
+			params.shadowLight = false;
+			params.portalStrict = false;
+			params.affectLand = true;
+			params.affectWater = true;
+			params.neverFades = false;
+			params.fov = 0.0f;
+			params.falloff = 1.0f;
+			params.nearDistance = 5.0f;
+			params.depthBias = 0.0f;
+			params.sceneGraphIndex = 0;
+			params.restrictedNode = nullptr;
+			params.lensFlareData = nullptr;
+			ssn->AddLight(light.get(), params);
+			st.propLight = light;
+		}
+	} else if (!lit && st.propLight) {
+		if (ssn)
+			ssn->RemoveLight(st.propLight.get());
+		if (st.propLight->parent)
+			st.propLight->parent->DetachChild(st.propLight.get());
+		st.propLight.reset();
+	}
+	st.propLit = lit;
+}
+
+void LTBLTorchBearers::RemoveProp(ActorState& st)
+{
+	if (st.propLight) {
+		auto* ssn = globals::game::smState ? globals::game::smState->shadowSceneNode[0] : nullptr;
+		if (ssn)
+			ssn->RemoveLight(st.propLight.get());
+		if (st.propLight->parent)
+			st.propLight->parent->DetachChild(st.propLight.get());
+		st.propLight.reset();
+	}
+	if (st.prop && st.prop->parent)
+		st.prop->parent->DetachChild(st.prop.get());
+	st.propOn = false;
+	st.propLit = false;
+}
+
+void LTBLTorchBearers::CleanupState(ActorState& st)
+{
+	auto actor = st.handle.get();
+	RemoveProp(st);
+	st.prop.reset();
+	RestoreMarker(actor.get(), st);
+	DeleteMarker(st.marker);
 }
 
 void LTBLTorchBearers::FinishSequence(RE::Actor* actor, ActorState& st)
 {
-	actor->SetGraphVariableInt(kGraphVariable, 0);
-	// Re-attach or remove the torch's light now that the animation is over.
-	Refresh3D(actor);
+	RemoveProp(st);
+	RestoreMarker(actor, st);
 	DeleteMarker(st.marker);
 	st.phase = Phase::kIdle;
 	st.phaseTime = 0.0f;
@@ -377,8 +561,13 @@ void LTBLTorchBearers::CancelSequence(RE::Actor* actor, ActorState& st)
 {
 	if (st.phase == Phase::kIdle)
 		return;
-	if (actor)
-		actor->SetGraphVariableInt(kGraphVariable, 0);
+	const bool playing = st.phase == Phase::kLighting || st.phase == Phase::kSnuffing;
+	RemoveProp(st);
+	RestoreMarker(actor, st);
+	if (actor && playing)
+		actor->NotifyAnimationGraph(kStopEvent);
+	if (st.phase == Phase::kLighting)
+		st.managed = false;  // the torch never reached the hand
 	DeleteMarker(st.marker);
 	st.phase = Phase::kIdle;
 	st.phaseTime = 0.0f;
@@ -478,28 +667,50 @@ void LTBLTorchBearers::TickSequences(float dt)
 
 		switch (st.phase) {
 		case Phase::kLighting:
-			if (!st.flameDone && st.phaseTime >= settings.LightFlameAt) {
-				equipManager->EquipObject(actor.get(), torch, nullptr, 1, nullptr, false, false, true, true);
-				st.flameDone = true;
+			{
+				const auto& tm = kLightClip;
+				if (!st.step1 && st.phaseTime >= tm.a) {
+					SetProp(actor.get(), st, true, false);  // hand closes on the handle behind the shoulder
+					st.step1 = true;
+				}
+				if (!st.step2 && st.phaseTime >= tm.b) {
+					SetProp(actor.get(), st, true, true);  // the flint catches
+					st.step2 = true;
+				}
+				if (st.propOn)
+					SetProp(actor.get(), st, true, st.propLit);  // re-attach if the 3D was rebuilt
+				if (st.phaseTime >= tm.dur) {
+					// The clip ends exactly in the vanilla carry pose: hand over to the real torch.
+					RemoveProp(st);
+					equipManager->EquipObject(actor.get(), torch, nullptr, 1, nullptr, false, false, true, true);
+					Refresh3D(actor.get());
+					FinishSequence(actor.get(), st);
+				}
 			}
-			if (st.phaseTime >= settings.LightDuration)
-				FinishSequence(actor.get(), st);
 			break;
 		case Phase::kWalkingToWater:
 			{
 				const bool arrived = actor->GetPosition().GetDistance(st.walkTarget) <= kArriveDistance;
 				if (arrived || st.phaseTime >= settings.WalkTimeout)
-					BeginSnuffAnimation(actor.get(), st, arrived ? SnuffKind::kWater : SnuffKind::kGround);
+					BeginSnuffAnimation(actor.get(), st, arrived ? st.kind : SnuffKind::kGround);
 			}
 			break;
 		case Phase::kSnuffing:
-			if (!st.flameDone && st.phaseTime >= settings.SnuffFlameAt) {
-				equipManager->UnequipObject(actor.get(), torch, nullptr, 1, nullptr, false, false, true, true);
-				st.managed = false;
-				st.flameDone = true;
+			{
+				const auto& tm = TimingFor(static_cast<std::int32_t>(st.kind));
+				if (!st.step1 && st.phaseTime >= tm.a) {
+					SetProp(actor.get(), st, true, false);  // flame dies
+					st.step1 = true;
+				}
+				if (!st.step2 && st.phaseTime >= tm.b) {
+					RemoveProp(st);  // stowed over the shoulder
+					st.step2 = true;
+				}
+				if (st.propOn)
+					SetProp(actor.get(), st, true, st.propLit);
+				if (st.phaseTime >= tm.dur)
+					FinishSequence(actor.get(), st);
 			}
-			if (st.phaseTime >= settings.SnuffDuration)
-				FinishSequence(actor.get(), st);
 			break;
 		default:
 			break;
@@ -635,7 +846,7 @@ void LTBLTorchBearers::Evaluate(float elapsed)
 	// Forget actors that left the high process.
 	for (auto it = states.begin(); it != states.end();) {
 		if (!seen.contains(it->first)) {
-			DeleteMarker(it->second.marker);
+			CleanupState(it->second);
 			it = states.erase(it);
 		} else {
 			++it;

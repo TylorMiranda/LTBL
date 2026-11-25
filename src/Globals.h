@@ -15,7 +15,6 @@ struct LightLimitFix;
 struct LinearLighting;
 struct LODBlending;
 struct InteriorSun;
-struct LTBLEyeAdaptation;
 struct LTBLTorchBearers;
 struct LTBLCandlelight;
 struct InverseSquareLighting;
@@ -107,7 +106,6 @@ namespace globals
 		extern LinearLighting linearLighting;
 		extern LODBlending lodBlending;
 		extern InteriorSun interiorSun;
-		extern LTBLEyeAdaptation ltblEyeAdaptation;
 		extern LTBLTorchBearers ltblTorchBearers;
 		extern LTBLCandlelight ltblCandlelight;
 		extern InverseSquareLighting inverseSquareLighting;

@@ -107,8 +107,12 @@ private:
 		bool markerSet = false;
 		bool propOn = false;
 		bool propLit = false;
+		bool flintOn = false;
+		int sparksDone = 0;
 		RE::NiPointer<RE::NiNode> prop;
-		RE::NiPointer<RE::NiPointLight> propLight;
+		RE::NiPointer<RE::NiLight> propLight;
+		RE::NiPointer<RE::NiNode> flint;
+		RE::BSSoundHandle burnSound;
 		RE::NiPoint3 walkTarget{};
 		RE::ObjectRefHandle marker{};
 		RE::ActorHandle handle{};
@@ -132,6 +136,8 @@ private:
 	void RestoreMarker(RE::Actor* actor, ActorState& st);
 	void SetProp(RE::Actor* actor, ActorState& st, bool on, bool lit);
 	void RemoveProp(ActorState& st);
+	void SetFlint(RE::Actor* actor, ActorState& st, bool on);
+	void StrikeSpark(RE::Actor* actor, ActorState& st);
 	void CleanupState(ActorState& st);
 	void FinishSequence(RE::Actor* actor, ActorState& st);
 	void CancelSequence(RE::Actor* actor, ActorState& st);

@@ -45,6 +45,17 @@ namespace
 		float a, b, dur;
 	};
 	constexpr ClipTiming kLightClip{ 0.62f, 2.40f, 3.60f };
+	// Lighting clip: flint out of the pouch / back in, and the four downstrokes across the head.
+	constexpr float kFlintOutAt = 1.12f;
+	constexpr float kFlintBackAt = 2.88f;
+	constexpr std::array<float, 4> kStrikeAt{ 1.52f, 1.80f, 2.07f, 2.37f };
+	// Vanilla Skyrim.esm records (sound replacers apply).
+	constexpr RE::FormID kStrikeSound = 0x000F69C2;   // WPNImpactBladeVsMetalSkin, pitched up and quiet = flint on steel
+	constexpr RE::FormID kIgniteSound = 0x00042526;   // TRPOilIgniteLowSD: the torch catching
+	constexpr RE::FormID kFireOutSound = 0x001080CC;  // FXFireOutSD: flame dies
+	constexpr const char* kSparkModel = "Effects\\ImpactEffects\\FXMetalSparkImpact01.nif";
+	constexpr const char* kFlintModel = "meshes\\LTBL\\LTBLFlint.nif";
+	const RE::NiPoint3 kTorchHeadLocal{ 0.0f, 30.0f, 0.8f };  // vanilla torch.nif: head center above the grip
 	constexpr ClipTiming kGroundClip{ 1.25f, 2.78f, 3.40f };
 	constexpr ClipTiming kWaterClip{ 1.15f, 3.02f, 3.60f };
 	constexpr ClipTiming kBasinClip{ 0.95f, 2.42f, 3.00f };
@@ -191,18 +202,46 @@ namespace
 		return obj ? obj->AsNode() : nullptr;
 	}
 
-	RE::NiPointer<RE::NiNode> LoadTorchModel(RE::TESObjectLIGH* torch)
+	RE::NiPointer<RE::NiNode> LoadModel(const std::string& path)
 	{
-		const char* model = torch ? torch->GetModel() : nullptr;
-		if (!model || !*model)
-			return nullptr;
-		std::string path = std::string("meshes\\") + model;
 		RE::BSModelDB::DBTraits::ArgsType args{};
 		RE::NiPointer<RE::NiNode> nif;
 		if (RE::BSModelDB::Demand(path.c_str(), nif, args) != RE::BSResource::ErrorCode::kNone || !nif)
 			return nullptr;
 		auto* clone = nif->Clone();
 		return RE::NiPointer<RE::NiNode>(clone ? clone->AsNode() : nullptr);
+	}
+
+	// The torch's own model, from the torch form, so mesh and texture replacers apply.
+	RE::NiPointer<RE::NiNode> LoadTorchModel(RE::TESObjectLIGH* torch)
+	{
+		const char* model = torch ? torch->GetModel() : nullptr;
+		if (!model || !*model)
+			return nullptr;
+		return LoadModel(std::string("meshes\\") + model);
+	}
+
+	void PlaySoundAt(RE::FormID id, const RE::NiPoint3& pos, float volume, float frequency)
+	{
+		auto* desc = RE::TESForm::LookupByID<RE::BGSSoundDescriptorForm>(id);
+		auto* audio = RE::BSAudioManager::GetSingleton();
+		if (!desc || !audio)
+			return;
+		RE::BSSoundHandle h;
+		if (!audio->GetSoundHandle(h, desc) || !h.IsValid())
+			return;
+		h.SetPosition(pos);
+		h.SetVolume(volume);
+		if (frequency != 1.0f)
+			h.SetFrequency(frequency);
+		h.Play();
+	}
+
+	RE::NiNode* RightHandNode(RE::Actor* actor)
+	{
+		auto* root = actor ? actor->Get3D(false) : nullptr;
+		auto* obj = root ? root->GetObjectByName("NPC R Hand [RHnd]") : nullptr;
+		return obj ? obj->AsNode() : nullptr;
 	}
 
 	void FaceTowards(RE::Actor* actor, const RE::NiPoint3& point)
@@ -258,7 +297,7 @@ void LTBLTorchBearers::DrawSettings()
 		if (animationsInstalled)
 			ImGui::TextColored(ImVec4(0.5f, 0.85f, 0.5f, 1.0f), "%s", T(TKEY("anim_found"), "Torch animations installed."));
 		else
-			ImGui::TextDisabled("%s", T(TKEY("anim_missing"), "Torch animations not installed yet. Torches change without animation."));
+			ImGui::TextDisabled("%s", T(TKEY("anim_missing"), "Open Animation Replacer or the torch animations are missing. NPCs will not use torches."));
 		ImGui::TextDisabled("%s", T(TKEY("anim_list"), "Light (draw, strike flint), snuff on ground, douse at shore or puddle, douse in trough, barrel or well."));
 		ImGui::Checkbox(T(TKEY("force_anim"), "Play the clips even if the pack is not detected"), &settings.ForceAnimations);
 		ImGui::TreePop();
@@ -340,19 +379,17 @@ void LTBLTorchBearers::CountActive()
 
 void LTBLTorchBearers::StartLighting(RE::Actor* actor, ActorState& st)
 {
+	// No animation, no torch: an NPC never gets one without the full draw-and-light sequence.
+	if (!UseAnimations() || !PlayClip(actor, st, SnuffKind::kLight))
+		return;
+
 	auto counts = actor->GetInventoryCounts([&](RE::TESBoundObject& obj) { return &obj == torch; });
 	if (counts.empty())
 		actor->AddObjectToContainer(torch, nullptr, 1, nullptr);
-
-	if (!UseAnimations() || !PlayClip(actor, st, SnuffKind::kLight)) {
-		RE::ActorEquipManager::GetSingleton()->EquipObject(actor, torch, nullptr, 1, nullptr, false, false, true, true);
-		Refresh3D(actor);
-		st.managed = true;
-		return;
-	}
 	st.phase = Phase::kLighting;
 	st.phaseTime = 0.0f;
 	st.step1 = st.step2 = false;
+	st.sparksDone = 0;
 	st.kind = SnuffKind::kLight;
 	st.managed = true;
 }
@@ -468,50 +505,30 @@ void LTBLTorchBearers::SetProp(RE::Actor* actor, ActorState& st, bool on, bool l
 		st.prop = LoadTorchModel(torch);
 	if (!st.prop || !shield)
 		return;
-	if (st.prop->parent != shield) {
+	const bool reattached = st.prop->parent != shield;
+	if (reattached) {
 		if (st.prop->parent)
 			st.prop->parent->DetachChild(st.prop.get());
 		shield->AttachChild(st.prop.get(), true);
 		RE::NiUpdateData ud{};
 		st.prop->UpdateWorldData(&ud);
 	}
+	const bool wasLit = st.propLit;
 	st.propOn = true;
 
+	// Flame: the torch mesh's own fire node (particles, glow, heat haze), shown or hidden.
 	if (auto* fire = st.prop->GetObjectByName("TorchFire"))
 		fire->SetAppCulled(!lit);
 
+	// Light: made by the torch form itself, exactly as the engine does for a carried torch
+	// (same color, radius, fade and flicker flags, including any changes other mods make to the torch).
 	auto* ssn = globals::game::smState ? globals::game::smState->shadowSceneNode[0] : nullptr;
-	if (lit && !st.propLight && ssn) {
-		RE::NiPointer<RE::NiPointLight> light(RE::NiPointLight::Create());
-		if (light) {
-			light->name = "LTBL_TorchPropLight";
-			auto& d = light->GetLightRuntimeData();
-			const float r = static_cast<float>(torch->data.radius);
-			d.ambient = { 0.0f, 0.0f, 0.0f };
-			d.diffuse = { torch->data.color.red / 255.0f, torch->data.color.green / 255.0f, torch->data.color.blue / 255.0f };
-			d.radius = { r, r, r };
-			d.fade = torch->fade;
-			light->SetLightAttenuation(r);
-			auto* attachObj = st.prop->GetObjectByName("AttachLight");
-			auto* attach = attachObj ? attachObj->AsNode() : nullptr;
-			(attach ? attach : st.prop.get())->AttachChild(light.get(), true);
-			RE::ShadowSceneNode::LIGHT_CREATE_PARAMS params{};
-			params.dynamic = true;
-			params.shadowLight = false;
-			params.portalStrict = false;
-			params.affectLand = true;
-			params.affectWater = true;
-			params.neverFades = false;
-			params.fov = 0.0f;
-			params.falloff = 1.0f;
-			params.nearDistance = 5.0f;
-			params.depthBias = 0.0f;
-			params.sceneGraphIndex = 0;
-			params.restrictedNode = nullptr;
-			params.lensFlareData = nullptr;
-			ssn->AddLight(light.get(), params);
-			st.propLight = light;
-		}
+	if (lit && (!st.propLight || reattached)) {
+		if (st.propLight && ssn)
+			ssn->RemoveLight(st.propLight.get());
+		auto* attachObj = st.prop->GetObjectByName("AttachLight");
+		auto* attach = attachObj ? attachObj->AsNode() : st.prop.get();
+		st.propLight.reset(torch->GenDynamic(actor, attach, 1, 1, 0));
 	} else if (!lit && st.propLight) {
 		if (ssn)
 			ssn->RemoveLight(st.propLight.get());
@@ -519,11 +536,63 @@ void LTBLTorchBearers::SetProp(RE::Actor* actor, ActorState& st, bool on, bool l
 			st.propLight->parent->DetachChild(st.propLight.get());
 		st.propLight.reset();
 	}
+
+	// Burning sound: the torch form's own loop.
+	if (lit && !st.burnSound.IsPlaying() && torch->sound) {
+		if (auto* audio = RE::BSAudioManager::GetSingleton(); audio && audio->GetSoundHandle(st.burnSound, torch->sound)) {
+			st.burnSound.SetObjectToFollow(st.prop.get());
+			st.burnSound.Play();
+		}
+	} else if (!lit && st.burnSound.IsValid()) {
+		st.burnSound.FadeOutAndRelease(250);
+	}
+	if (reattached && lit && st.burnSound.IsValid())
+		st.burnSound.SetObjectToFollow(st.prop.get());
+
+	if (wasLit && !lit) {
+		RE::NiPoint3 head = st.prop->world * kTorchHeadLocal;
+		PlaySoundAt(kFireOutSound, head, 1.0f, 1.0f);
+	}
 	st.propLit = lit;
+}
+
+void LTBLTorchBearers::SetFlint(RE::Actor* actor, ActorState& st, bool on)
+{
+	if (!on) {
+		if (st.flint && st.flint->parent)
+			st.flint->parent->DetachChild(st.flint.get());
+		st.flintOn = false;
+		return;
+	}
+	auto* hand = RightHandNode(actor);
+	if (!st.flint)
+		st.flint = LoadModel(kFlintModel);
+	if (!st.flint || !hand)
+		return;
+	if (st.flint->parent != hand) {
+		if (st.flint->parent)
+			st.flint->parent->DetachChild(st.flint.get());
+		hand->AttachChild(st.flint.get(), true);
+		RE::NiUpdateData ud{};
+		st.flint->UpdateWorldData(&ud);
+	}
+	st.flintOn = true;
+}
+
+void LTBLTorchBearers::StrikeSpark(RE::Actor* actor, ActorState& st)
+{
+	if (!st.prop || !actor)
+		return;
+	const RE::NiPoint3 head = st.prop->world * kTorchHeadLocal;
+	if (auto* cell = actor->GetParentCell())
+		RE::BSTempEffectParticle::Spawn(cell, 0.6f, kSparkModel, RE::NiPoint3{ 0.0f, 0.0f, 0.0f }, head, 0.35f, 7, nullptr);
+	PlaySoundAt(kStrikeSound, head, 0.35f, 1.6f);
 }
 
 void LTBLTorchBearers::RemoveProp(ActorState& st)
 {
+	if (st.burnSound.IsValid())
+		st.burnSound.FadeOutAndRelease(150);
 	if (st.propLight) {
 		auto* ssn = globals::game::smState ? globals::game::smState->shadowSceneNode[0] : nullptr;
 		if (ssn)
@@ -534,8 +603,11 @@ void LTBLTorchBearers::RemoveProp(ActorState& st)
 	}
 	if (st.prop && st.prop->parent)
 		st.prop->parent->DetachChild(st.prop.get());
+	if (st.flint && st.flint->parent)
+		st.flint->parent->DetachChild(st.flint.get());
 	st.propOn = false;
 	st.propLit = false;
+	st.flintOn = false;
 }
 
 void LTBLTorchBearers::CleanupState(ActorState& st)
@@ -543,6 +615,7 @@ void LTBLTorchBearers::CleanupState(ActorState& st)
 	auto actor = st.handle.get();
 	RemoveProp(st);
 	st.prop.reset();
+	st.flint.reset();
 	RestoreMarker(actor.get(), st);
 	DeleteMarker(st.marker);
 }
@@ -673,8 +746,22 @@ void LTBLTorchBearers::TickSequences(float dt)
 					SetProp(actor.get(), st, true, false);  // hand closes on the handle behind the shoulder
 					st.step1 = true;
 				}
+				if (!st.flintOn && st.phaseTime >= kFlintOutAt && st.phaseTime < kFlintBackAt)
+					SetFlint(actor.get(), st, true);  // flint out of the belt pouch
+				if (st.flintOn) {
+					if (st.phaseTime >= kFlintBackAt)
+						SetFlint(actor.get(), st, false);
+					else
+						SetFlint(actor.get(), st, true);  // re-attach if the 3D was rebuilt
+				}
+				while (st.sparksDone < static_cast<int>(kStrikeAt.size()) && st.phaseTime >= kStrikeAt[st.sparksDone]) {
+					StrikeSpark(actor.get(), st);
+					++st.sparksDone;
+				}
 				if (!st.step2 && st.phaseTime >= tm.b) {
-					SetProp(actor.get(), st, true, true);  // the flint catches
+					SetProp(actor.get(), st, true, true);  // the torch catches
+					if (st.prop)
+						PlaySoundAt(kIgniteSound, st.prop->world * kTorchHeadLocal, 0.7f, 1.0f);
 					st.step2 = true;
 				}
 				if (st.propOn)

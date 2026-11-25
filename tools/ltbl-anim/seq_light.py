@@ -77,10 +77,11 @@ def build():
     lt2 = s.rest_t.copy(); lq2 = s.rest_q.copy(); lt2[:99] = ref["mt_t"]; lq2[:99] = ref["mt_q"]
     wt2, _ = s.fk(lt2, lq2)
     r_idle = wt2[c.idx("NPC R Hand")]
-    head = strike_hand + qrot(strike_rot, np.array([0.0, 30.0, 0.8]))
-    wrist = np.array([2.4, -7.2, -0.8])   # wrist sits behind the flint held in the fingers
-    up = head + [7.0, -2.0, 7.0] + wrist
-    down = head + [-4.0, 1.0, -6.0] + wrist
+    head = c.torch_head(int(1.9 * 30))  # actual torch head (through the Shield mount) mid-strike
+    # keys below are where the FLINT goes (corrected to the stone, not the wrist, after solving)
+    side = np.array([3.0, -2.0, 0.0])        # brush the surface of the head, not through it
+    up = head + [6.0, -2.5, 6.0] + side
+    down = head + [-5.0, 1.5, -6.0] + side
     pouch = np.array([13.0, 7.0, 75.0])
     R_pos = Curve([
         (0.85, r_idle), (1.10, pouch), (1.18, pouch + [0, 0, -1.0]),
@@ -93,6 +94,21 @@ def build():
     c.arm("R", R_pos, R_pole, R_w)
     aim_w = Curve([(1.15, 0.0), (1.35, 1.0), (2.50, 1.0), (2.75, 0.0)], mode="ease")
     c.aim_hand("R", lambda t: [-0.55, 0.75, -0.35], aim_w)
+    # move the wrist so the stone itself follows the strike path
+    from make_flint import hand_frame
+    flint_local, _ = hand_frame()
+    rh = c.idx("NPC R Hand")
+    strike_w = Curve([(1.20, 0.0), (1.38, 1.0), (2.45, 1.0), (2.62, 0.0)], mode="ease")
+    for _ in range(4):
+        pts = []
+        for f, t in enumerate(c.times):
+            wt, wq = c.fk(f)
+            tip = wt[rh] + qrot(wq[rh], flint_local)
+            want = c.torch_head(f) + (np.asarray(R_pos(t)) - head)  # strike offsets follow the moving torch
+            err = (want - tip) * strike_w(t)
+            pts.append((t, wt[rh] + err))
+        c.arm("R", Curve(pts, mode="linear"), R_pole, lambda t: 1.0 if strike_w(t) > 0 else 0.0)
+        c.aim_hand("R", lambda t: [-0.55, 0.75, -0.35], aim_w)
 
 
     # 6) hands: left grips the handle from the grab on; right pinches the flint
